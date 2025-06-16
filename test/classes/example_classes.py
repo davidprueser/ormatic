@@ -1,12 +1,9 @@
 from __future__ import annotations
-
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict
-
 from sqlalchemy import types
 from typing_extensions import List, Optional, Type
-
 from ormatic.utils import ORMaticExplicitMapping, classproperty
 
 
@@ -139,19 +136,20 @@ class Cup(PhysicalObject):
 class Bowl(PhysicalObject):
     pass
 
-# @dataclass
-# class Parent1:
-#     obj: str
-#
-#
-# @dataclass
-# class Parent2:
-#     obj2: str
-#
-#
-# @dataclass
-# class MultipleInheritance(Parent1, Parent2):
-#     pass
+@dataclass
+class Parent1:
+    obj: str
+
+
+@dataclass
+class Parent2:
+    obj2: str
+    value: int
+
+
+@dataclass
+class MultipleInheritance(Parent1, Parent2):
+    pass
 
 
 @dataclass

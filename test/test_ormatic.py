@@ -7,9 +7,7 @@ from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import registry, Session, clear_mappers
 
 import ormatic
-import classes.example_classes
-from classes import example_classes
-from classes.example_classes import *
+import classes.example_classes as ex
 from ormatic.ormatic import ORMatic
 from ormatic.utils import classes_of_module, recursive_subclasses
 
@@ -217,6 +215,7 @@ class ORMaticTestCase(unittest.TestCase):
         ignore_classes |= {cls.explicit_mapping for cls in recursive_subclasses(ORMaticExplicitMapping)}
         ignore_classes |= {OriginalSimulatedObject}
         ignore_classes |= set(recursive_subclasses(Enum))
+        ignore_classes |= {Parent1, Parent2, MultipleInheritance}
 
         classes = list(set(classes) - ignore_classes)
 
@@ -321,22 +320,91 @@ class ORMaticTestCase(unittest.TestCase):
         self.assertEqual(re, object_annotation)
 
 
-    # def test_multiple_inheritance(self):
-    #     classes = [Parent1, Parent2, MultipleInheritance]
-    #     ormatic = ORMatic(classes, self.mapper_registry)
-    #     ormatic.make_all_tables()
-    #     self.mapper_registry.metadata.create_all(self.session.bind)
-    #
-    #     mi1 = MultipleInheritance("a1", "a2")
-    #     self.session.add(mi1)
-    #     self.session.commit()
-    #
-    #     r1 = self.session.scalars(select(MultipleInheritance)).one()
-    #     r2 = self.session.scalars(select(Parent1)).one()
-    #     r3 = self.session.scalars(select(Parent2)).one()
-    #
-    #     self.assertEqual(r1, r2)
-    #     self.assertEqual(r1, r3)
+    def test_multiple_inheritance1(self):
+        classes = [ex.Parent1, ex.Parent2, ex.MultipleInheritance]
+        ormatic = ORMatic(classes, self.mapper_registry)
+        ormatic.make_all_tables()
+        self.mapper_registry.metadata.create_all(self.session.bind)
+
+        generator = sqlacodegen.generators.TablesGenerator(self.mapper_registry.metadata, self.session.bind, [])
+
+        with open('orm_interface.py', 'w') as f:
+            ormatic.to_python_file(generator, f)
+
+        par1 = ex.Parent1(obj="obj1")
+        par2 = ex.Parent2(obj2="a1", value=3)
+
+        mi1 = ex.MultipleInheritance()
+        mi1.parent1 = par1
+        mi1.parent2 = par2
+        print(mi1)
+        # print(mi1.obj)
+        # print(mi1.obj2)
+        self.session.add(mi1)
+        self.session.commit()
+
+        # Query the MultipleInheritance object
+        r1 = self.session.scalars(select(ex.MultipleInheritance)).one()
+        print("r1", r1)
+
+        r2 = self.session.scalars(select(ex.Parent1)).all()
+        print("r2", r2)
+        r3 = self.session.scalars(select(ex.Parent2)).all()
+        print("r3", r3)
+
+        # Verify that the object has all the expected attributes
+        # self.assertEqual(r1.obj, "obj")
+        # self.assertEqual(r1.obj2, "a1")
+        # self.assertEqual(r1.name, "a2")
+        # self.assertEqual(r1.test, 0)
+        # self.assertEqual(r1.tests, ["a4", "a5"])
+
+        # print(r1.__dict__)
+        # print()
+        self.assertEqual(r1, mi1)  # +1 for polymorphic_type
+
+
+    def test_multiple_inheritance(self):
+        # classes = [Parent1, Parent2, MultipleInheritance]
+        # ormatic = ORMatic(classes, self.mapper_registry)
+        # ormatic.make_all_tables()
+        self.mapper_registry = mapper_registry
+        self.mapper_registry.metadata.create_all(self.session.bind)
+
+        # generator = sqlacodegen.generators.TablesGenerator(self.mapper_registry.metadata, self.session.bind, [])
+        #
+        # with open('orm_interface.py', 'w') as f:
+        #     ormatic.to_python_file(generator, f)
+
+        par1 = Parent1(obj="obj1")
+        par2 = Parent2(obj2="a1", value=3.3)
+
+        mi1 = _MultipleInheritance(par1, par2)
+        print(mi1)
+        # print(mi1.obj)
+        # print(mi1.obj2)
+        self.session.add(mi1)
+        self.session.commit()
+
+        # Query the MultipleInheritance object
+        r1 = self.session.scalars(select(_MultipleInheritance)).one()
+        print("r1", r1)
+
+        r2 = self.session.scalars(select(Parent1)).all()
+        print("r2", r2)
+        r3 = self.session.scalars(select(Parent2)).all()
+        print("r3", r3)
+
+        # Verify that the object has all the expected attributes
+        # self.assertEqual(r1.obj, "obj")
+        # self.assertEqual(r1.obj2, "a1")
+        # self.assertEqual(r1.name, "a2")
+        # self.assertEqual(r1.test, 0)
+        # self.assertEqual(r1.tests, ["a4", "a5"])
+
+        # print(r1.__dict__)
+        # print()
+        self.assertEqual(r1, mi1)  # +1 for polymorphic_type
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, Field, fields, field
+from dataclasses import dataclass, Field, fields, field, make_dataclass
 from functools import cached_property
+from inspect import Parameter, _empty, Signature
 from typing import Any
 from typing import TextIO
 
@@ -16,6 +17,7 @@ from typing_extensions import List, Type, Dict, Optional
 from .custom_types import TypeType
 from .field_info import ParseError, FieldInfo, RelationshipInfo, CustomTypeInfo
 from .utils import ORMaticExplicitMapping
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +53,8 @@ class ORMatic:
     A list of classes that are explicitly mapped to SQLAlchemy tables.
     """
 
+    __synthetic_classes: Dict[WrappedTable, Type] = None
+
     def __init__(self, classes: List[Type], mapper_registry: registry, type_mappings: Dict[Type, Any] = None):
         """
         :param classes: The list of classes to be mapped.
@@ -62,6 +66,7 @@ class ORMatic:
         self.mapper_registry = mapper_registry
         self.class_dict = {}
         self.explicitly_mapped_classes = []
+        self.__synthetic_classes = {}
 
         # create the class dependency graph
         self.make_class_dependency_graph(classes)
@@ -72,12 +77,23 @@ class ORMatic:
             # get the inheritance tree
             bases: List[Type] = [base for (base, _) in self.class_dependency_graph.in_edges(clazz)]
             if len(bases) > 1:
-                raise ParseError(f"Multiple inheritance is not supported. {clazz} has multiple mapped bases: {bases}")
+                self.make_multiple_inheritance_wrapper(clazz, bases, mapper_registry)
+                continue
+                # parents = []
+                # for base in bases:
+                #     base = self.class_dict[base]
+                #     parents.append(base)
+                # wrapped_table = WrappedTable(clazz=clazz, mapper_registry=mapper_registry, parent_classes=parents)
+                # self.class_dict[clazz] = wrapped_table
+                # continue
 
             base = self.class_dict[bases[0]] if bases else None
 
             # wrap the classes to aggregate the needed properties before compiling it with sql
-            wrapped_table = WrappedTable(clazz=clazz, mapper_registry=mapper_registry, parent_class=base)
+            if base:
+                wrapped_table = WrappedTable(clazz=clazz, mapper_registry=mapper_registry, parent_classes=[base])
+            else:
+                wrapped_table = WrappedTable(clazz=clazz, mapper_registry=mapper_registry)
 
             self.class_dict[clazz] = wrapped_table
 
@@ -114,6 +130,52 @@ class ORMatic:
         return {wrapped_table.clazz: wrapped_table.mapped_table for wrapped_table in self.class_dict.values()
                 if wrapped_table.clazz not in self.explicitly_mapped_classes}
 
+    def make_multiple_inheritance_wrapper(self, clazz: Type, bases: List[Type], mapper_registry: registry):
+        """
+        Create a wrapper for multiple inheritance classes.
+        This is needed to handle the case where a class has multiple base classes.
+
+        :param clazz: The class to wrap
+        :param bases: The base classes of the class to wrap
+        :param mapper_registry: The SQLAlchemy mapper registry. This is needed for the relationship configuration.
+        """
+
+        field_defs = []
+        annotations = {}
+
+        for base in bases:
+            wrapped_table = self.class_dict[base]
+            field_name = wrapped_table.foreign_key_name
+            mapped_base_class = wrapped_table.clazz
+            field_defs.append((field_name, mapped_base_class, field(default=None)))
+            annotations[field_name] = mapped_base_class
+
+        synthetic_name = f"_{clazz.__name__}"
+        synthetic_cls = make_dataclass(
+            synthetic_name,
+            field_defs,
+            bases=(object,),
+            namespace={"__annotations__": annotations},
+            frozen=False,
+            init=False
+        )
+
+        wrapped_table_synthetic = WrappedTable(clazz=synthetic_cls, mapper_registry=mapper_registry)
+        # self.__synthetic_classes[wrapped_table_synthetic] = clazz
+
+        self.class_dict[clazz] = wrapped_table_synthetic
+
+        for base in bases:
+            self.class_dict[base].subclasses.append(wrapped_table_synthetic)
+
+        original_module = sys.modules[clazz.__module__]
+        synthetic_cls.__annotations__ = annotations
+        synthetic_cls.__name__ = clazz.__name__
+        synthetic_cls.__qualname__ = clazz.__qualname__
+        synthetic_cls.__module__ = clazz.__module__
+        synthetic_cls.__doc__ = clazz.__doc__
+        setattr(original_module, clazz.__name__, synthetic_cls)
+
     def parse_classes(self):
         """
         Parse all the classes in the class_dict, aggregating the columns, primary keys, foreign keys and relationships.
@@ -130,9 +192,10 @@ class ORMatic:
         :param wrapped_table: The WrappedTable object to parse
         """
         for f in fields(wrapped_table.clazz):
-
-            if wrapped_table.parent_class and f in fields(wrapped_table.parent_class.clazz):
-                continue
+            for parent in wrapped_table.parent_classes:
+                if f in fields(parent.clazz):
+                    logger.info(f"Skipping field {f.name} from parent class {parent.clazz.__name__}.")
+                    break
 
             self.parse_field(wrapped_table, f)
 
@@ -282,7 +345,9 @@ class ORMatic:
         generator.module_imports |= {clazz.explicit_mapping.__module__ for clazz in self.class_dict.keys() if
                                      issubclass(clazz, ORMaticExplicitMapping)}
         generator.module_imports |= {clazz.__module__ for clazz in self.class_dict.keys()}
+        # generator.module_imports |= {clazz.__module__ for clazz in self.__synthetic_classes}
         generator.imports["sqlalchemy.orm"] = {"registry", "relationship", "RelationshipProperty"}
+        generator.imports["dataclasses"] = {"dataclass", "field"}
 
         # write tables
         file.write(generator.generate())
@@ -291,9 +356,30 @@ class ORMatic:
         file.write("\n")
         file.write("mapper_registry = registry(metadata=metadata)\n")
 
+        # if self.__synthetic_classes:
+        #     for wrapped_table in self.__synthetic_classes:
+        #         attributes = []
+        #         for attribute in fields(wrapped_table.clazz):
+        #             attributes.append(
+        #                 f"{attribute.name}: {attribute.type.__module__}.{attribute.type.__name__} = field(default=None)")
+        #
+        #         file.write("\n")
+        #         file.write("@dataclass\n")
+        #         file.write(f"class {wrapped_table.clazz.__name__}:\n"
+        #                    f"    {'\n    '.join(attributes)}\n"
+        #                    f"\n")
+        #                    # f"    def __class__(self):\n"
+        #                    # f"        return {self.__synthetic_classes[wrapped_table].__module__}.{self.__synthetic_classes[wrapped_table].__name__}\n"
+        #                    # f"\n")
+        #
+        #         file.write(f"m_{wrapped_table.tablename} = mapper_registry."
+        #                    f"map_imperatively({wrapped_table.tablename}, "
+        #                    f"t_{wrapped_table.tablename}, {wrapped_table.mapper_kwargs_for_python_file(self)})\n"
+        #                    )
+        #
         # write imperative mapping calls
         for wrapped_table in self.class_dict.values():
-            if wrapped_table.clazz in self.explicitly_mapped_classes:
+            if wrapped_table.clazz in self.explicitly_mapped_classes or wrapped_table in self.__synthetic_classes:
                 continue
             file.write("\n")
 
@@ -363,15 +449,15 @@ class WrappedTable:
     A list of subclasses as Wrapped Tables of the class that this WrappedTable wraps.
     """
 
-    parent_class: Optional[WrappedTable] = None
+    parent_classes: Optional[List[WrappedTable]] = field(default_factory=list)
     """
     The parent class of self.clazz if it exists.
     """
 
     @cached_property
     def primary_key(self):
-        if self.parent_class:
-            column_type = ForeignKey(self.parent_class.full_primary_key_name)
+        if self.parent_classes and len(self.parent_classes) == 1:
+            column_type = ForeignKey(self.parent_classes[0].full_primary_key_name)
         else:
             column_type = Integer
 
@@ -397,7 +483,7 @@ class WrappedTable:
 
     @property
     def is_root_of_non_empty_inheritance_structure(self):
-        return self.has_subclasses and not self.parent_class
+        return self.has_subclasses and not self.parent_classes
 
     @property
     def properties_kwargs(self) -> Dict[str, Any]:
@@ -435,9 +521,9 @@ class WrappedTable:
         if self.is_root_of_non_empty_inheritance_structure:
             kwargs["polymorphic_on"] = self.polymorphic_on_name
             kwargs["polymorphic_identity"] = self.tablename
-        elif self.parent_class:
+        elif self.parent_classes and len(self.parent_classes) == 1:
             kwargs["polymorphic_identity"] = self.tablename
-            kwargs["inherits"] = self.parent_class.mapped_table
+            kwargs["inherits"] = self.parent_classes[0].mapped_table
 
         return kwargs
 
@@ -466,9 +552,9 @@ class WrappedTable:
         if self.is_root_of_non_empty_inheritance_structure:
             result["polymorphic_on"] = f"\"{self.polymorphic_on_name}\""
             result["polymorphic_identity"] = f"\"{self.tablename}\""
-        if self.parent_class:
+        if self.parent_classes and len(self.parent_classes) == 1:
             result["polymorphic_identity"] = f"\"{self.tablename}\""
-            result["inherits"] = f"m_{self.parent_class.tablename}"
+            result["inherits"] = f"m_{self.parent_classes[0].tablename}"
 
         result = ", ".join(f"{key} = {value}" for key, value in result.items())
         return result
