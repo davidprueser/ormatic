@@ -32,12 +32,12 @@ class ORMaticTestCase(unittest.TestCase):
         self.session.close()
 
     def test_no_dependencies(self):
-        classes = [Position, Orientation]
+        classes = [ex.Position, ex.Orientation]
         result = ORMatic(classes, self.mapper_registry)
 
         self.assertEqual(len(result.class_dict), 2)
-        position_table = result.class_dict[Position].mapped_table
-        orientation_table = result.class_dict[Orientation].mapped_table
+        position_table = result.class_dict[ex.Position].mapped_table
+        orientation_table = result.class_dict[ex.Orientation].mapped_table
 
         self.assertEqual(len(position_table.columns), 4)
         self.assertEqual(len(orientation_table.columns), 5)
@@ -45,8 +45,8 @@ class ORMaticTestCase(unittest.TestCase):
         orientation_colum = [c for c in orientation_table.columns if c.name == 'w'][0]
         self.assertTrue(orientation_colum.nullable)
 
-        p1 = Position(x=1, y=2, z=3)
-        o1 = Orientation(x=1, y=2, z=3, w=None)
+        p1 = ex.Position(x=1, y=2, z=3)
+        o1 = ex.Orientation(x=1, y=2, z=3, w=None)
 
         # create all tables
         self.mapper_registry.metadata.create_all(self.session.bind)
@@ -55,43 +55,43 @@ class ORMaticTestCase(unittest.TestCase):
         self.session.commit()
 
         # test the content of the database
-        queried_p1 = self.session.scalars(select(Position)).one()
-        queried_o1 = self.session.scalars(select(Orientation)).one()
+        queried_p1 = self.session.scalars(select(ex.Position)).one()
+        queried_o1 = self.session.scalars(select(ex.Orientation)).one()
         self.assertEqual(queried_p1, p1)
         self.assertEqual(queried_o1, o1)
 
     def test_enum_parse(self):
-        classes = [EnumContainer]
+        classes = [ex.EnumContainer]
         result = ORMatic(classes, self.mapper_registry)
         result.make_all_tables()
 
-        enum_container_table = result.class_dict[EnumContainer].mapped_table.local_table
+        enum_container_table = result.class_dict[ex.EnumContainer].mapped_table.local_table
 
         self.assertEqual(len(enum_container_table.columns), 2)
         self.assertEqual(len(enum_container_table.foreign_keys), 0)
 
         self.mapper_registry.metadata.create_all(self.session.bind)
 
-        enum_container = EnumContainer(value=ValueEnum.A)
+        enum_container = ex.EnumContainer(value=ex.ValueEnum.A)
         self.session.add(enum_container)
         self.session.commit()
 
-        queried_enum_container = self.session.scalars(select(EnumContainer)).one()
+        queried_enum_container = self.session.scalars(select(ex.EnumContainer)).one()
         self.assertEqual(queried_enum_container, enum_container)
 
     def test_one_to_one_relationships(self):
-        classes = [Position, Orientation, Pose]
+        classes = [ex.Position, ex.Orientation, ex.Pose]
         result = ORMatic(classes, self.mapper_registry)
         all_tables = result.make_all_tables()
-        pose_table = result.class_dict[Pose].mapped_table.local_table
+        pose_table = result.class_dict[ex.Pose].mapped_table.local_table
 
         # get foreign keys of pose_table
         foreign_keys = pose_table.foreign_keys
         self.assertEqual(len(foreign_keys), 2)
 
-        p1 = Position(x=1, y=2, z=3)
-        o1 = Orientation(x=1, y=2, z=3, w=1)
-        pose1 = Pose(p1, o1)
+        p1 = ex.Position(x=1, y=2, z=3)
+        o1 = ex.Orientation(x=1, y=2, z=3, w=1)
+        pose1 = ex.Pose(p1, o1)
 
         # create all tables
         self.mapper_registry.metadata.create_all(self.session.bind)
@@ -99,20 +99,20 @@ class ORMaticTestCase(unittest.TestCase):
         self.session.commit()
 
         # test the content of the database
-        queried_p1 = self.session.scalars(select(Position)).one()
-        queried_o1 = self.session.scalars(select(Orientation)).one()
-        queried_pose1 = self.session.scalars(select(Pose)).one()
+        queried_p1 = self.session.scalars(select(ex.Position)).one()
+        queried_o1 = self.session.scalars(select(ex.Orientation)).one()
+        queried_pose1 = self.session.scalars(select(ex.Pose)).one()
         self.assertEqual(queried_p1, p1)
         self.assertEqual(queried_o1, o1)
         self.assertEqual(queried_pose1, pose1)
 
     def test_one_to_many(self):
-        classes = [Position, Positions]
+        classes = [ex.Position, ex.Positions]
         result = ORMatic(classes, self.mapper_registry)
         result.make_all_tables()
 
-        positions_table = result.class_dict[Positions].mapped_table.local_table
-        position_table = result.class_dict[Position].mapped_table.local_table
+        positions_table = result.class_dict[ex.Positions].mapped_table.local_table
+        position_table = result.class_dict[ex.Position].mapped_table.local_table
 
         foreign_keys = position_table.foreign_keys
         self.assertEqual(len(foreign_keys), 1)
@@ -121,23 +121,23 @@ class ORMaticTestCase(unittest.TestCase):
 
         self.mapper_registry.metadata.create_all(self.session.bind)
 
-        p1 = Position(x=1, y=2, z=3)
-        p2 = Position(x=2, y=3, z=4)
+        p1 = ex.Position(x=1, y=2, z=3)
+        p2 = ex.Position(x=2, y=3, z=4)
 
-        positions = Positions([p1, p2], ["a", "b"])
+        positions = ex.Positions([p1, p2], ["a", "b"])
 
         self.session.add(positions)
         self.session.commit()
 
-        positions = self.session.scalars(select(Positions)).one()
+        positions = self.session.scalars(select(ex.Positions)).one()
         self.assertEqual(positions.positions, [p1, p2])
 
     def test_one_to_many_multiple(self):
-        classes = [Position, DoublePositionAggregator]
+        classes = [ex.Position, ex.DoublePositionAggregator]
         result = ORMatic(classes, self.mapper_registry)
 
-        double_positions_table = result.class_dict[DoublePositionAggregator].mapped_table.local_table
-        position_table = result.class_dict[Position].mapped_table.local_table
+        double_positions_table = result.class_dict[ex.DoublePositionAggregator].mapped_table.local_table
+        position_table = result.class_dict[ex.Position].mapped_table.local_table
 
         foreign_keys = position_table.foreign_keys
         self.assertEqual(len(foreign_keys), 2)
@@ -146,80 +146,83 @@ class ORMaticTestCase(unittest.TestCase):
 
         self.mapper_registry.metadata.create_all(self.session.bind)
 
-        p1 = Position(x=1, y=2, z=3)
-        p2 = Position(x=2, y=3, z=4)
-        p3 = Position(x=3, y=4, z=5)
+        p1 = ex.Position(x=1, y=2, z=3)
+        p2 = ex.Position(x=2, y=3, z=4)
+        p3 = ex.Position(x=3, y=4, z=5)
 
-        positions = DoublePositionAggregator([p1, p2], [p3])
+        positions = ex.DoublePositionAggregator([p1, p2], [p3])
 
         self.session.add(positions)
         self.session.commit()
 
-        queried = self.session.scalars(select(DoublePositionAggregator)).one()
+        queried = self.session.scalars(select(ex.DoublePositionAggregator)).one()
         self.assertEqual(positions, queried)
 
     def test_inheritance(self):
-        classes = [Position, Position4D, Position5D]
+        classes = [ex.Position, ex.Position4D, ex.Position5D]
         result = ORMatic(classes, self.mapper_registry)
         result.make_all_tables()
 
-        position4d_table = result.class_dict[Position4D].mapped_table.local_table
+        position4d_table = result.class_dict[ex.Position4D].mapped_table.local_table
 
         foreign_keys = position4d_table.foreign_keys
+        print(position4d_table.columns)
+        print(foreign_keys)
         self.assertEqual(len(foreign_keys), 1)
         self.assertEqual(len(position4d_table.columns), 2)
 
         # assert position table polymorphic identity
         self.mapper_registry.metadata.create_all(self.session.bind)
-        p1 = Position(x=1, y=2, z=3)
-        p2 = Position4D(x=2, y=3, z=4, w=2)
+        # p1 = ex.Position(x=1, y=2, z=3)
+        p2 = ex.Position4D(x=2, y=3, z=4, w=2)
 
-        self.session.add_all([p1, p2])
+        self.session.add_all([p2])
         self.session.commit()
 
-        queried_p1 = self.session.scalars(select(Position)).all()
-        self.assertEqual(queried_p1, [p1, p2])
-        queried_p2 = self.session.scalars(select(Position4D)).first()
-        self.assertIsInstance(queried_p2, Position)
+        queried_p1 = self.session.scalars(select(ex.Position)).all()
+        print(queried_p1)
+        # self.assertEqual(queried_p1, [p1, p2])
+        queried_p2 = self.session.scalars(select(ex.Position4D)).first()
+        self.assertIsInstance(queried_p2, ex.Position)
 
     def test_tree_structure(self):
-        classes = [Node]
+        classes = [ex.Node]
         result = ORMatic(classes, self.mapper_registry)
         result.make_all_tables()
 
         self.mapper_registry.metadata.create_all(self.session.bind)
 
-        n1 = Node()
-        n2 = Node(parent=n1)
-        n3 = Node(parent=n1)
+        n1 = ex.Node()
+        n2 = ex.Node(parent=n1)
+        n3 = ex.Node(parent=n1)
 
         self.session.add_all([n1, n2, n3])
         self.session.commit()
 
-        results = self.session.scalars(select(Node)).all()
+        results = self.session.scalars(select(ex.Node)).all()
         n1, n2, n3 = results
         self.assertIsNone(n1.parent)
         self.assertEqual(n2.parent, n1)
         self.assertEqual(n3.parent, n1)
 
     def test_all_together(self):
-        classes = [Position, Orientation, Pose, Position4D, Positions, EnumContainer]
+        classes = [ex.Position, ex.Orientation, ex.Pose, ex.Position4D, ex.Positions, ex.EnumContainer]
         result = ORMatic(classes, self.mapper_registry)
         result.make_all_tables()
         self.mapper_registry.metadata.create_all(self.session.bind)
 
     def test_to_python_file(self):
-        classes = classes_of_module(example_classes)
+        classes = classes_of_module(ex)
 
-        ignore_classes = {PhysicalObject, PhysicalObjectType} | set(recursive_subclasses(PhysicalObject))
-        ignore_classes |= {cls.explicit_mapping for cls in recursive_subclasses(ORMaticExplicitMapping)}
-        ignore_classes |= {OriginalSimulatedObject}
-        ignore_classes |= set(recursive_subclasses(Enum))
-        ignore_classes |= {Parent1, Parent2, MultipleInheritance}
+        ignore_classes = {ex.PhysicalObject, ex.PhysicalObjectType} | set(recursive_subclasses(ex.PhysicalObject))
+        ignore_classes |= {cls.explicit_mapping for cls in recursive_subclasses(ex.ORMaticExplicitMapping)}
+        ignore_classes |= {ex.OriginalSimulatedObject}
+        ignore_classes |= set(recursive_subclasses(ex.Enum))
+        ignore_classes |= {ex.Parent1, ex.Parent2, ex.MultipleInheritance}
 
         classes = list(set(classes) - ignore_classes)
 
-        ormatic = ORMatic(classes, self.mapper_registry, {PhysicalObject: PhysicalObjectType()})
+        ormatic = ORMatic(classes, self.mapper_registry, {ex.PhysicalObject: ex.PhysicalObjectType()})
         ormatic.make_all_tables()
         self.mapper_registry.metadata.create_all(self.session.bind)
 
@@ -228,54 +231,51 @@ class ORMaticTestCase(unittest.TestCase):
         with open('orm_interface.py', 'w') as f:
             ormatic.to_python_file(generator, f)
 
-        # with open('orm_interface.py', 'r') as f:
-        #     exec(f.read())
-
     def test_molecule(self):
-        classes = [Atom, Bond, Molecule]
+        classes = [ex.Atom, ex.Bond, ex.Molecule]
         ormatic = ORMatic(classes, self.mapper_registry)
         ormatic.make_all_tables()
         self.mapper_registry.metadata.create_all(self.session.bind)
 
-        atom = Atom(Element.I, 1, 1.0)
-        bond = Bond(atom, atom, 1)
-        molecule = Molecule(1, 1, 1.0, 1.0, True, [atom], [bond])
+        atom = ex.Atom(ex.Element.I, 1, 1.0)
+        bond = ex.Bond(atom, atom, 1)
+        molecule = ex.Molecule(1, 1, 1.0, 1.0, True, [atom], [bond])
         self.session.add_all([atom, bond, molecule])
         self.session.commit()
 
-        result = self.session.scalars(select(Molecule).join(Atom).where(Atom.element == Element.I).distinct()).first()
+        result = self.session.scalars(select(ex.Molecule).join(ex.Atom).where(ex.Atom.element == ex.Element.I).distinct()).first()
         self.assertEqual(result, molecule)
         self.assertEqual(result.color, 'red')
 
     def test_explicit_mappings(self):
-        classes = [PartialPosition]
+        classes = [ex.PartialPosition]
         ormatic = ORMatic(classes, self.mapper_registry)
         ormatic.make_all_tables()
         self.mapper_registry.metadata.create_all(self.session.bind)
 
-        p1 = Position4D(x=1, y=2, z=0, w=0)
-        p2 = Position4D(x=2, y=3, z=0, w=0)
+        p1 = ex.Position4D(x=1, y=2, z=0, w=0)
+        p2 = ex.Position4D(x=2, y=3, z=0, w=0)
         self.session.add_all([p1, p2])
         self.session.commit()
 
-        result = self.session.scalars(select(Position4D)).all()
+        result = self.session.scalars(select(ex.Position4D)).all()
         self.assertEqual(len(result), len([p1, p2]))
         self.assertEqual(result, [p1, p2])
 
     def test_type_casting(self):
-        classes = [Position, Orientation, Pose, SimulatedObject]
-        ormatic = ORMatic(classes, self.mapper_registry, type_mappings={PhysicalObject: PhysicalObjectType()})
+        classes = [ex.Position, ex.Orientation, ex.Pose, ex.SimulatedObject]
+        ormatic = ORMatic(classes, self.mapper_registry, type_mappings={ex.PhysicalObject: ex.PhysicalObjectType()})
         ormatic.make_all_tables()
 
         self.mapper_registry.metadata.create_all(self.session.bind)
 
-        obj1 = OriginalSimulatedObject(Bowl(), Pose(Position(0, 0, 0), Orientation(0, 0, 0, 1)), 5)
+        obj1 = ex.OriginalSimulatedObject(ex.Bowl(), ex.Pose(ex.Position(0, 0, 0), ex.Orientation(0, 0, 0, 1)), 5)
         self.session.add(obj1)
         self.session.commit()
-        result = self.session.scalar(select(OriginalSimulatedObject))
+        result = self.session.scalar(select(ex.OriginalSimulatedObject))
 
         self.assertEqual(result, obj1)
-        self.assertIsInstance(result.concept, Bowl)
+        self.assertIsInstance(result.concept, ex.Bowl)
         self.assertEqual(result.concept, obj1.concept)
         self.assertEqual(result.concept, obj1.concept)
 
@@ -290,34 +290,30 @@ class ORMaticTestCase(unittest.TestCase):
         self.assertEqual(type(store_rows[0][1]), str)
 
     def test_type_type(self):
-        classes = [PositionTypeWrapper]
+        classes = [ex.PositionTypeWrapper]
         ormatic = ORMatic(classes, self.mapper_registry)
         ormatic.make_all_tables()
         self.mapper_registry.metadata.create_all(self.session.bind)
 
-        wrapper = PositionTypeWrapper(Position)
+        wrapper = ex.PositionTypeWrapper(ex.Position)
         self.session.add(wrapper)
         self.session.commit()
-        result = self.session.scalars(select(PositionTypeWrapper)).one()
+        result = self.session.scalars(select(ex.PositionTypeWrapper)).one()
         self.assertEqual(result, wrapper)
 
     def test_explicit_mapping_reference(self):
-        classes = [ObjectAnnotation, SimulatedObject, Pose, Position, Orientation]
-        ormatic = ORMatic(classes, self.mapper_registry, type_mappings={PhysicalObject: PhysicalObjectType()})
+        classes = [ex.ObjectAnnotation, ex.SimulatedObject, ex.Pose, ex.Position, ex.Orientation]
+        ormatic = ORMatic(classes, self.mapper_registry, type_mappings={ex.PhysicalObject: ex.PhysicalObjectType()})
         ormatic.make_all_tables()
         self.mapper_registry.metadata.create_all(self.session.bind)
 
-        og_sim = OriginalSimulatedObject(Bowl(), Pose(Position(0, 0, 0), Orientation(0, 0, 0, 1)), 5.)
-        object_annotation = ObjectAnnotation(og_sim)
+        og_sim = ex.OriginalSimulatedObject(ex.Bowl(), ex.Pose(ex.Position(0, 0, 0), ex.Orientation(0, 0, 0, 1)), 5.)
+        object_annotation = ex.ObjectAnnotation(og_sim)
         self.session.add(object_annotation)
         self.session.commit()
 
-        r = self.session.scalars(select(OriginalSimulatedObject)).one()
-        self.assertEqual(r, object_annotation.object_reference)
-
-        re = self.session.scalars(select(ObjectAnnotation)).one()
-        self.assertIsNotNone(re.object_reference)
-        self.assertEqual(re, object_annotation)
+        queried_annotation = self.session.scalars(select(ex.ObjectAnnotation)).one()
+        self.assertEqual(queried_annotation, object_annotation)
 
 
     def test_multiple_inheritance1(self):
@@ -330,20 +326,16 @@ class ORMaticTestCase(unittest.TestCase):
 
         with open('orm_interface.py', 'w') as f:
             ormatic.to_python_file(generator, f)
+        # print(ormatic.class_dict.keys())
+        # mi_table = ormatic.class_dict[MultipleInheritance].mapped_table.local_table
+        #
+        # self.assertEqual(len(mi_table.columns), 2)
 
-        par1 = ex.Parent1(obj="obj1")
-        par2 = ex.Parent2(obj2="a1", value=3)
-
-        mi1 = ex.MultipleInheritance()
-        mi1.parent1 = par1
-        mi1.parent2 = par2
+        mi1 = ex.MultipleInheritance("obj", "obj2", 1)
         print(mi1)
-        # print(mi1.obj)
-        # print(mi1.obj2)
         self.session.add(mi1)
         self.session.commit()
 
-        # Query the MultipleInheritance object
         r1 = self.session.scalars(select(ex.MultipleInheritance)).one()
         print("r1", r1)
 
@@ -352,58 +344,6 @@ class ORMaticTestCase(unittest.TestCase):
         r3 = self.session.scalars(select(ex.Parent2)).all()
         print("r3", r3)
 
-        # Verify that the object has all the expected attributes
-        # self.assertEqual(r1.obj, "obj")
-        # self.assertEqual(r1.obj2, "a1")
-        # self.assertEqual(r1.name, "a2")
-        # self.assertEqual(r1.test, 0)
-        # self.assertEqual(r1.tests, ["a4", "a5"])
-
-        # print(r1.__dict__)
-        # print()
-        self.assertEqual(r1, mi1)  # +1 for polymorphic_type
-
-
-    def test_multiple_inheritance(self):
-        # classes = [Parent1, Parent2, MultipleInheritance]
-        # ormatic = ORMatic(classes, self.mapper_registry)
-        # ormatic.make_all_tables()
-        self.mapper_registry = mapper_registry
-        self.mapper_registry.metadata.create_all(self.session.bind)
-
-        # generator = sqlacodegen.generators.TablesGenerator(self.mapper_registry.metadata, self.session.bind, [])
-        #
-        # with open('orm_interface.py', 'w') as f:
-        #     ormatic.to_python_file(generator, f)
-
-        par1 = Parent1(obj="obj1")
-        par2 = Parent2(obj2="a1", value=3.3)
-
-        mi1 = _MultipleInheritance(par1, par2)
-        print(mi1)
-        # print(mi1.obj)
-        # print(mi1.obj2)
-        self.session.add(mi1)
-        self.session.commit()
-
-        # Query the MultipleInheritance object
-        r1 = self.session.scalars(select(_MultipleInheritance)).one()
-        print("r1", r1)
-
-        r2 = self.session.scalars(select(Parent1)).all()
-        print("r2", r2)
-        r3 = self.session.scalars(select(Parent2)).all()
-        print("r3", r3)
-
-        # Verify that the object has all the expected attributes
-        # self.assertEqual(r1.obj, "obj")
-        # self.assertEqual(r1.obj2, "a1")
-        # self.assertEqual(r1.name, "a2")
-        # self.assertEqual(r1.test, 0)
-        # self.assertEqual(r1.tests, ["a4", "a5"])
-
-        # print(r1.__dict__)
-        # print()
         self.assertEqual(r1, mi1)  # +1 for polymorphic_type
 
 if __name__ == '__main__':

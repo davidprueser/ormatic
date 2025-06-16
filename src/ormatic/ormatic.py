@@ -53,7 +53,6 @@ class ORMatic:
     A list of classes that are explicitly mapped to SQLAlchemy tables.
     """
 
-    __synthetic_classes: Dict[WrappedTable, Type] = None
 
     def __init__(self, classes: List[Type], mapper_registry: registry, type_mappings: Dict[Type, Any] = None):
         """
@@ -66,7 +65,6 @@ class ORMatic:
         self.mapper_registry = mapper_registry
         self.class_dict = {}
         self.explicitly_mapped_classes = []
-        self.__synthetic_classes = {}
 
         # create the class dependency graph
         self.make_class_dependency_graph(classes)
@@ -79,13 +77,6 @@ class ORMatic:
             if len(bases) > 1:
                 self.make_multiple_inheritance_wrapper(clazz, bases, mapper_registry)
                 continue
-                # parents = []
-                # for base in bases:
-                #     base = self.class_dict[base]
-                #     parents.append(base)
-                # wrapped_table = WrappedTable(clazz=clazz, mapper_registry=mapper_registry, parent_classes=parents)
-                # self.class_dict[clazz] = wrapped_table
-                # continue
 
             base = self.class_dict[bases[0]] if bases else None
 
@@ -161,7 +152,6 @@ class ORMatic:
         )
 
         wrapped_table_synthetic = WrappedTable(clazz=synthetic_cls, mapper_registry=mapper_registry)
-        # self.__synthetic_classes[wrapped_table_synthetic] = clazz
 
         self.class_dict[clazz] = wrapped_table_synthetic
 
@@ -175,6 +165,41 @@ class ORMatic:
         synthetic_cls.__module__ = clazz.__module__
         synthetic_cls.__doc__ = clazz.__doc__
         setattr(original_module, clazz.__name__, synthetic_cls)
+
+        arg_to_base = {}
+        for base in bases:
+            base_name = self.class_dict[base].foreign_key_name
+            base_cls = self.class_dict[base].clazz
+            for f in fields(base_cls):
+                arg_to_base[f.name] = base_name
+
+        arg_names = list(arg_to_base.keys())
+        arg_list = ", ".join(arg_names)
+
+        lines = [f"def __init__(self, {arg_list}):"]
+        parent_init_lines = {}
+
+        for arg, parent in arg_to_base.items():
+            parent_init_lines.setdefault(parent, []).append(f"{arg}={arg}")
+
+        fk_name_to_base = {
+            self.class_dict[base].foreign_key_name: base
+            for base in bases
+        }
+
+        for parent, args in parent_init_lines.items():
+            base_cls = self.class_dict[fk_name_to_base[parent]].clazz
+            assignment = f"self.{parent} = {base_cls.__name__}({', '.join(args)})"
+            lines.append(f"    {assignment}")
+        src = "\n".join(lines)
+
+        namespace = {}
+        for base in bases:
+            cls = self.class_dict[base].clazz
+            namespace[cls.__name__] = cls
+
+        exec(src, namespace)
+        setattr(synthetic_cls, "__init__", namespace["__init__"])
 
     def parse_classes(self):
         """
@@ -345,7 +370,6 @@ class ORMatic:
         generator.module_imports |= {clazz.explicit_mapping.__module__ for clazz in self.class_dict.keys() if
                                      issubclass(clazz, ORMaticExplicitMapping)}
         generator.module_imports |= {clazz.__module__ for clazz in self.class_dict.keys()}
-        # generator.module_imports |= {clazz.__module__ for clazz in self.__synthetic_classes}
         generator.imports["sqlalchemy.orm"] = {"registry", "relationship", "RelationshipProperty"}
         generator.imports["dataclasses"] = {"dataclass", "field"}
 
@@ -379,8 +403,8 @@ class ORMatic:
         #
         # write imperative mapping calls
         for wrapped_table in self.class_dict.values():
-            if wrapped_table.clazz in self.explicitly_mapped_classes or wrapped_table in self.__synthetic_classes:
-                continue
+            # if wrapped_table.clazz in self.explicitly_mapped_classes or wrapped_table in self.__synthetic_classes:
+            #     continue
             file.write("\n")
 
             parsed_kwargs = wrapped_table.mapper_kwargs_for_python_file(self)
