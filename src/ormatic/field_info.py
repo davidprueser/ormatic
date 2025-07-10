@@ -8,12 +8,9 @@ import sys
 import typing
 from dataclasses import dataclass, Field
 from datetime import datetime
-from functools import cached_property
+from functools import lru_cache
 from types import NoneType
 
-import sqlalchemy
-from sqlalchemy import Column, TypeDecorator
-from sqlalchemy.orm.relationships import _RelationshipDeclared
 from typing_extensions import Type, get_origin, Optional, get_type_hints
 
 
@@ -59,8 +56,10 @@ class FieldInfo:
 
     is_type_field: bool = False
 
-    def __init__(self, clazz: Type, f: Field):
+    field: Field = None
 
+    def __init__(self, clazz: Type, f: Field):
+        self.field = f
         self.name = f.name
         self.clazz = clazz
 
@@ -76,7 +75,7 @@ class FieldInfo:
         # try to unpack the type if it is a nested type
         if len(type_args) > 0:
             if len(type_args) > 2:
-                raise ParseError(f"Could not parse field {f}. Too many type arguments.")
+                raise ParseError(f"Could not parse field {f} of class {clazz}. Too many type arguments.")
 
             self.optional = NoneType in type_args
 
@@ -106,13 +105,6 @@ class FieldInfo:
     def is_type_type(self) -> bool:
         return self.is_type_field
 
-    @cached_property
-    def column(self) -> Column:
-        if self.is_enum:
-            return Column(self.name, sqlalchemy.Enum(self.type), nullable=self.optional)
-        else:
-            return Column(self.name, sqlalchemy_type(self.type), nullable=self.optional)
-
     @property
     def is_enum(self):
         return issubclass(self.type, enum.Enum)
@@ -120,51 +112,6 @@ class FieldInfo:
     @property
     def is_datetime(self):
         return self.type == datetime
-
-
-@dataclass
-class RelationshipInfo:
-    """
-    Wrapper class for relationships since sqlalchemy loses information in its process.
-    """
-    foreign_key_name: str
-    relationship: _RelationshipDeclared
-    field_info: FieldInfo
-
-    @property
-    def is_one_to_one(self) -> bool:
-        return self.field_info.container is None
-
-
-@dataclass
-class CustomTypeInfo:
-    """
-    Wrapper object to associate custom types with fields.
-    """
-    column: Column
-    custom_type: TypeDecorator
-    field_info: FieldInfo
-
-
-def sqlalchemy_type(t: Type) -> Type[sqlalchemy.types.TypeEngine]:
-    """
-    Convert a Python type to a SQLAlchemy type.
-
-    :param t: A Python type
-    :return: The corresponding SQLAlchemy type
-    """
-    if t == int:
-        return sqlalchemy.Integer
-    elif t == float:
-        return sqlalchemy.Float
-    elif t == str:
-        return sqlalchemy.String(256)
-    elif t == bool:
-        return sqlalchemy.Boolean
-    elif t == datetime:
-        return sqlalchemy.DateTime
-    else:
-        raise ValueError(f"Could not parse type {t}.")
 
 
 def is_container(clazz: Type) -> bool:
@@ -197,7 +144,6 @@ def manually_search_for_class_name(target_class_name: str) -> Type:
         if inspect.isclass(obj) and obj.__name__ == target_class_name:
             found_classes.append(obj)
 
-
     # Search 2: In all loaded modules (via sys.modules)
     for module_name, module in sys.modules.items():
         if module is None or not hasattr(module, '__dict__'):
@@ -215,7 +161,12 @@ def manually_search_for_class_name(target_class_name: str) -> Type:
     elif len(found_classes) == 1:
         resolved_class = found_classes[0]
     else:
-        logging.warning(f"Found multiple classes with name {target_class_name}. Found classes: {found_classes} ")
+        warn_multiple_classes(target_class_name, tuple(found_classes))
         resolved_class = found_classes[0]
 
     return resolved_class
+
+
+@lru_cache(maxsize=None)
+def warn_multiple_classes(target_class_name, found_classes):
+    logging.warning(f"Found multiple classes with name {target_class_name}. Found classes: {found_classes} ")

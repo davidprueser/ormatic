@@ -1,36 +1,35 @@
 from __future__ import annotations
+
+import importlib
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
-from typing import Dict
-from sqlalchemy import types
+from typing import Dict, Any
+
+from sqlalchemy import types, TypeDecorator
 from typing_extensions import List, Optional, Type
-from ormatic.utils import ORMaticExplicitMapping, classproperty
+
+from ormatic.dao import DataAccessObject, AlternativeMapping
 
 
-class Element(str, Enum):
+# check that custom enums works
+class Element(Enum):
     C = "c"
     H = "h"
-    O = "o"
-    N = "n"
-    F = "f"
-    B = "b"
-    I = "i"
 
-    def __repr__(self):
-        return self.name
-
-
+# Check that Types attributes work
 @dataclass
 class PositionTypeWrapper:
     position_type: Type[Position]
 
+# check that flat classes work
 @dataclass
 class Position:
     x: float
     y: float
     z: float
 
-
+# check that classes with optional values work
 @dataclass
 class Orientation:
     x: float
@@ -39,92 +38,48 @@ class Orientation:
     w: Optional[float]
 
 
+# check that one to one relationship work
 @dataclass
 class Pose:
     position: Position
     orientation: Orientation
 
 
+# check that one to many relationship to built in types and non built in types work
 @dataclass
 class Positions:
     positions: List[Position]
     some_strings: List[str]
 
+# check that one to many relationships work where the many side is of the same type
 @dataclass
 class DoublePositionAggregator:
     positions1: List[Position]
     positions2: List[Position]
 
+# check that inheritance works
 @dataclass
 class Position4D(Position):
     w: float
 
 
-@dataclass
-class PartialPosition(ORMaticExplicitMapping):
-    x: float
-    y: float
-    z: float
-
-    @classmethod
-    @property
-    def explicit_mapping(cls):
-        return Position4D
-
-
-@dataclass
-class Position5D(Position):
-    a: float
-
-
-class ValueEnum(int, Enum):
-    A = 1
-    B = 2
-    C = 3
-
-
-@dataclass
-class EnumContainer:
-    value: ValueEnum
-
-
+# check with tree like classes
 @dataclass
 class Node:
     parent: Optional[Node] = None
 
+class NotMappedParent:
+    ...
 
+# check that enum references work
 @dataclass
-class Atom:
+class Atom(NotMappedParent):
     element: Element
     type: int
     charge: float
+    timestamp: datetime = field(default_factory=datetime.now)
 
-
-@dataclass
-class Bond:
-    atom1: Atom
-    atom2: Atom
-    type: int
-
-
-@dataclass
-class Molecule:
-    ind1: int
-    inda: int
-    logp: float
-    lumo: float
-    mutagenic: bool
-
-    atoms: List[Atom]
-    bonds: List[Bond]
-
-    @property
-    def color(self):
-        if [a for a in self.atoms if a.element == Element.I]:
-            return "red"
-        return "green"
-
-
+# check that custom type checks work
 class PhysicalObject:
     pass
 
@@ -136,62 +91,16 @@ class Cup(PhysicalObject):
 class Bowl(PhysicalObject):
     pass
 
-@dataclass
-class Parent1:
-    obj: str
-
-
-@dataclass
-class Parent2:
-    obj2: str
-    value: int
-
-
-@dataclass
-class MultipleInheritance(Parent1, Parent2):
-    pass
+# @dataclass
+# class MultipleInheritance(Position, Orientation):
+#    pass
 
 
 @dataclass
 class OriginalSimulatedObject:
     concept: PhysicalObject
-    pose: Pose
     placeholder: float = field(default=0)
 
-    something_not_parsed: Dict[str, str] = field(default=None)
-
-
-@dataclass
-class SimulatedObject(ORMaticExplicitMapping):
-    concept: PhysicalObject
-    pose: Pose
-
-    @classproperty
-    def explicit_mapping(cls):
-        return OriginalSimulatedObject
-
-
-class PhysicalObjectType(types.TypeDecorator):
-    """
-    This type represents a physical object type.
-    The database representation of this is a string while the in memory type is the instance of PhysicalObject.
-    """
-    cache_ok = True
-    impl = types.String
-
-    def process_bind_param(self, value, dialect):
-        return value.__class__.__name__
-
-    def process_result_value(self, value, dialect):
-        if value is None:
-            return None
-        cls = globals().get(value)
-        if cls is not None and issubclass(cls, PhysicalObject):
-            return cls()
-        raise ValueError(f"Cannot map '{value}' to a PhysicalObject class.")
-
-    def copy(self, **kw):
-        return self.__class__(**kw)
 
 @dataclass
 class ObjectAnnotation:
@@ -199,3 +108,77 @@ class ObjectAnnotation:
     Class for checking how classes that are explicitly mapped interact with original types.
     """
     object_reference: OriginalSimulatedObject
+
+@dataclass
+class KinematicChain:
+    name: str
+
+@dataclass
+class Torso(KinematicChain):
+    """
+    A Torso is a kinematic chain connecting the base of the robot with a collection of other kinematic chains.
+    """
+    kinematic_chains: List[KinematicChain] = field(default_factory=list)
+    """
+    A collection of kinematic chains that are connected to the torso.
+    """
+
+@dataclass
+class Parent:
+    name: str
+
+@dataclass
+class ChildMapped(Parent):
+    attribute1: int
+
+@dataclass
+class ChildNotMapped(Parent):
+    attribute2: int
+    unparseable: Dict[int, int]
+
+
+@dataclass
+class Entity:
+    name: str
+    attribute_that_shouldnt_appear_at_all: float = 0
+
+
+# Define a derived class
+@dataclass
+class DerivedEntity(Entity):
+    description: str = "Default description"
+
+@dataclass
+class EntityAssociation:
+    """
+    Class for checking how classes that are explicitly mapped interact with original types.
+    """
+    entity: Entity
+
+# Define an explicit mapping DAO that maps to the base entity class
+@dataclass
+class CustomEntity(AlternativeMapping[Entity]):
+    overwritten_name: str
+
+    @classmethod
+    def create_instance(cls, obj: Entity):
+        result = cls(overwritten_name=obj.name)
+        return result
+
+class ConceptType(TypeDecorator):
+    """
+    Type that casts fields that are of type `type` to their class name on serialization and converts the name
+    to the class itself through the globals on load.
+    """
+    impl = types.String(256)
+
+    def process_bind_param(self, value: PhysicalObject, dialect):
+        return value.__class__.__module__ + "." + value.__class__.__name__
+
+    def process_result_value(self, value: impl, dialect) -> Optional[Type]:
+        if value is None:
+            return None
+
+        module_name, class_name = str(value).rsplit('.', 1)
+        module = importlib.import_module(module_name)
+        return getattr(module, class_name)()
