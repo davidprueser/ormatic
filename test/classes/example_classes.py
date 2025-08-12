@@ -366,3 +366,85 @@ class ChildBaseMapping(ParentBaseMapping, AlternativeMapping[ChildBase]):
 
     def create_from_dao(self) -> T:
         return ChildBase(self.name, 0)
+
+@dataclass
+class Point3:
+    x: float
+    y: float
+    z: float
+
+    additional_attribute1: Optional[str] = None
+    additional_attribute2: Optional[int] = None
+
+    def to_position(self) -> Position:
+        return Position(x=self.x, y=self.y, z=self.z)
+
+
+@dataclass
+class Quaternion:
+    x: float
+    y: float
+    z: float
+    w: float
+
+    additional_attribute1: Optional[str] = None
+    additional_attribute2: Optional[int] = None
+
+    def to_rotation(self) -> Rotation:
+        return Rotation(angle=self.w)
+
+
+@dataclass
+class TransformationMatrix:
+    position: Point3
+    rotation: Quaternion
+
+    additional_attribute1: Optional[str] = None
+
+
+@dataclass
+class Point3Mapping(AlternativeMapping[Point3]):
+    x: float
+    y: float
+    z: float
+
+    @classmethod
+    def create_instance(cls, obj: Point3):
+        result = cls(x=obj.x, y=obj.y, z=obj.z)
+        return result
+
+    def create_from_dao(self) -> Point3:
+        return Point3(x=self.x, y=self.y, z=self.z)
+
+
+@dataclass
+class QuaternionMapping(AlternativeMapping[Quaternion]):
+    x: float
+    y: float
+    z: float
+    w: float
+
+    @classmethod
+    def create_instance(cls, obj: Quaternion):
+        result = cls(x=obj.x, y=obj.y, z=obj.z, w=obj.w)
+        return result
+
+    def create_from_dao(self) -> Quaternion:
+        return Quaternion(x=self.x, y=self.y, z=self.z, w=self.w)
+
+
+@dataclass
+class TransformationMatrixMapping(AlternativeMapping[TransformationMatrix]):
+    position: Point3
+    rotation: Quaternion
+
+    @classmethod
+    def create_instance(cls, obj: TransformationMatrix):
+        result = cls(
+            position=Point3(obj.position.x, obj.position.y, obj.position.z),
+            rotation=Quaternion(obj.rotation.x, obj.rotation.y, obj.rotation.z, obj.rotation.w)
+        )
+        return result
+
+    def create_from_dao(self) -> TransformationMatrix:
+        return TransformationMatrix(position=self.position, rotation=self.rotation)

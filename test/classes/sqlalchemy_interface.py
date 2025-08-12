@@ -236,6 +236,19 @@ class OriginalSimulatedObjectDAO(Base, DataAccessObject[classes.example_classes.
 
 
 
+class Point3MappingDAO(Base, DataAccessObject[classes.example_classes.Point3Mapping]):
+    __tablename__ = 'Point3MappingDAO'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    x: Mapped[float]
+    y: Mapped[float]
+    z: Mapped[float]
+
+
+
+
+
 class PoseDAO(Base, DataAccessObject[classes.example_classes.Pose]):
     __tablename__ = 'PoseDAO'
 
@@ -299,6 +312,20 @@ class PositionsDAO(Base, DataAccessObject[classes.example_classes.Positions]):
         'polymorphic_identity': 'PositionsDAO',
     }
 
+class QuaternionMappingDAO(Base, DataAccessObject[classes.example_classes.QuaternionMapping]):
+    __tablename__ = 'QuaternionMappingDAO'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    x: Mapped[float]
+    y: Mapped[float]
+    z: Mapped[float]
+    w: Mapped[float]
+
+
+
+
+
 class ReferenceDAO(Base, DataAccessObject[classes.example_classes.Reference]):
     __tablename__ = 'ReferenceDAO'
 
@@ -361,6 +388,20 @@ class TransformationMappedDAO(Base, DataAccessObject[classes.example_classes.Tra
 
     vector: Mapped[VectorMappedDAO] = relationship('VectorMappedDAO', uselist=False, foreign_keys=[vector_id], post_update=True)
     rotation: Mapped[RotationMappedDAO] = relationship('RotationMappedDAO', uselist=False, foreign_keys=[rotation_id], post_update=True)
+
+
+class TransformationMatrixMappingDAO(Base, DataAccessObject[classes.example_classes.TransformationMatrixMapping]):
+    __tablename__ = 'TransformationMatrixMappingDAO'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+
+
+    position_id: Mapped[int] = mapped_column(ForeignKey('Point3MappingDAO.id', use_alter=True), nullable=True)
+    rotation_id: Mapped[int] = mapped_column(ForeignKey('QuaternionMappingDAO.id', use_alter=True), nullable=True)
+
+    position: Mapped[Point3MappingDAO] = relationship('Point3MappingDAO', uselist=False, foreign_keys=[position_id], post_update=True)
+    rotation: Mapped[QuaternionMappingDAO] = relationship('QuaternionMappingDAO', uselist=False, foreign_keys=[rotation_id], post_update=True)
 
 
 class VectorMappedDAO(Base, DataAccessObject[classes.example_classes.VectorMapped]):

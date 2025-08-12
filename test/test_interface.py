@@ -1,3 +1,4 @@
+import random
 import unittest
 
 from sqlalchemy import create_engine, Engine, select
@@ -417,7 +418,7 @@ class InterfaceTestCase(unittest.TestCase):
 
         self.assertEqual(reconstructed.vectors[0].x, vector.x)
 
-    def test_test_classes(self):
+    def test_alternative_mapping_inheritance(self):
         parent = ParentBase("x", 0)
         child = ChildBase("y", 0)
         parent_mapping = ParentBaseMapping("x")
@@ -439,6 +440,31 @@ class InterfaceTestCase(unittest.TestCase):
         self.assertEqual(parent_result_dao, parent_dao)
         self.assertEqual(child_from_dao, child)
         self.assertEqual(parent_from_dao, parent)
+
+    def test_garbage_collection(self):
+        all_objects = []
+        for i in range(10000):
+            obj = TransformationMatrix(Point3(random.random(), random.random(), random.random()),
+                                       Quaternion(random.random(), random.random(), random.random(), random.random()))
+            all_objects.append(obj)
+
+            dao = to_dao(obj)
+            self.session.add(dao)
+
+        self.session.commit()
+
+        results = self.session.scalars(select(TransformationMatrixMappingDAO)).all()
+        all_results = []
+        for result in results:
+            back = result.from_dao()
+            self.assertTrue(result.position is not None)
+            self.assertTrue(result.rotation is not None)
+            all_results.append(back)
+            print("----------------------------------")
+            print(result.position)
+            print(result.rotation)
+            print("----------------------------------")
+        self.assertEqual(all_results, all_objects)
 
 
 if __name__ == '__main__':
